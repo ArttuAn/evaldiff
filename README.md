@@ -182,7 +182,7 @@ Baseline replacement is an intentional file update—not an automatic response t
 
 ![Illustration of the generated updating PR comment](docs/pr-comment.svg)
 
-The complete generated Markdown is in [docs/example-pr-comment.md](docs/example-pr-comment.md).
+**See it working:** [live demo PR #1](https://github.com/ArttuAn/promptguard/pull/1) triggers three intentional regressions, then restores the working adapter to exercise the comment update. The complete generated Markdown is in [docs/example-pr-comment.md](docs/example-pr-comment.md).
 
 ```mermaid
 flowchart LR
@@ -196,7 +196,7 @@ flowchart LR
     H --> I[One updating PR comment]
 ```
 
-Two workflows separate untrusted evaluation from the write-enabled reporter:
+Two workflows separate untrusted evaluation from the write-enabled reporter. Third-party Actions are pinned to verified commit SHAs:
 
 1. **[Prompt evaluation](.github/workflows/eval.yml)** runs tests and baseline comparison on pushes/PRs with read-only repository permissions. It uploads run/comparison artifacts even when the regression gate fails.
 2. **[Evaluation PR comment](.github/workflows/comment.yml)** runs via `workflow_run`, checks out **only default-branch code**, downloads the triggering run's named artifact, validates the comparison data, and builds its own Markdown. It never executes an artifact or checks out PR code with a write token.
