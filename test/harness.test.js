@@ -22,7 +22,7 @@ test('JSON Schema checks parsed strings, required fields, types, formats, and ex
   for (const value of ['not JSON', {}, { email: 5 }, { email: 'not-email' }, { email: 'ada@example.com', extra: true }]) assert.equal(grade(value, grader).passed, false);
 });
 test('JSONL loader rejects empty sets, invalid JSON, duplicate IDs and invalid graders', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'promptguard-'));
+  const dir = await mkdtemp(join(tmpdir(), 'evaldiff-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, 'cases.jsonl');
   for (const content of ['', '{', JSON.stringify(caseOne) + '\n' + JSON.stringify(caseOne), JSON.stringify({ ...caseOne, id: '<bad>' }), JSON.stringify({ ...caseOne, graders: [{ type: 'unknown' }] }), JSON.stringify({ ...caseOne, graders: [{ type: 'exact' }] }), JSON.stringify({ ...caseOne, graders: [{ type: 'json-schema', schema: { type: 'made-up' } }] })]) {
@@ -51,7 +51,7 @@ test('regression fixture produces exactly three new failures', async () => {
   assert.equal(baseline.passed, 10); assert.equal(current.passed, 7);
   assert.deepEqual(comparison.newFailures, ['extract-contact', 'refusal', 'route-refund']);
   assert.equal(headline(comparison), 'Pass rate 100% → 70%, 3 new failures');
-  assert.match(markdownReport(comparison), /promptguard:report/);
+  assert.match(markdownReport(comparison), /evaldiff:report/);
 });
 test('new failures gate even when aggregate pass rate is unchanged', async () => {
   const cases = [caseOne, { ...caseOne, id: 'two' }];
@@ -77,9 +77,9 @@ test('report validation rejects malicious IDs, inconsistent counts and duplicate
   for (const invalid of [{ ...valid, newFailures: ['<script>'] }, { ...valid, currentPassed: 81 }, { ...valid, regression: false }, { ...valid, newFailures: ['a','a','c','d','e'] }]) assert.throws(() => validateComparison(invalid));
 });
 test('CLI returns 0/1/2, writes artifacts, and compares saved runs', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'promptguard-cli-'));
+  const dir = await mkdtemp(join(tmpdir(), 'evaldiff-cli-'));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  const cli = (...args) => spawnSync(process.execPath, ['bin/promptguard.js', ...args], { encoding: 'utf8' });
+  const cli = (...args) => spawnSync(process.execPath, ['bin/evaldiff.js', ...args], { encoding: 'utf8' });
   const base = join(dir, 'baseline.json'); const current = join(dir, 'current.json'); const report = join(dir, 'comparison.json');
   assert.equal(cli('run', '--cases', 'examples/cases.jsonl', '--adapter', 'examples/app.mjs', '--out', base).status, 0);
   assert.equal(cli('run', '--cases', 'examples/cases.jsonl', '--adapter', 'examples/regressed-app.mjs', '--baseline', base, '--out', current, '--report', report).status, 1);

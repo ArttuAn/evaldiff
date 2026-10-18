@@ -31,7 +31,7 @@ if (pr.state !== 'open' || pr.head.sha !== run.head_sha) {
   console.log('PR is closed or this result is stale. Skipping.');
   process.exit(0);
 }
-const file = await readFile('.promptguard/comparison.json');
+const file = await readFile('.evaldiff/comparison.json');
 if (file.length > 1000000) throw new Error('Comparison artifact too large.');
 // Validates integer bounds, count consistency, unique IDs, and a conservative ID alphabet.
 const comparison = JSON.parse(file.toString());
@@ -39,7 +39,7 @@ const body = markdownReport(comparison) + `\n[View evaluation run](https://githu
 let existing;
 for (let page = 1; page <= 10; page++) {
   const comments = await api(`/issues/${number}/comments?per_page=100&page=${page}`);
-  existing = comments.find(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.includes('<!-- promptguard:report -->'));
+  existing = comments.find(comment => comment.user?.login === 'github-actions[bot]' && (comment.body?.includes('<!-- evaldiff:report -->') || comment.body?.includes('<!-- promptguard:report -->')));
   if (existing || comments.length < 100) break;
 }
 await api(existing ? `/issues/comments/${existing.id}` : `/issues/${number}/comments`, { method: existing ? 'PATCH' : 'POST', body: JSON.stringify({ body }) });

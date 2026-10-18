@@ -6,13 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { loadCases, runCases, compareRuns } from '../src/harness.js';
 import { headline, markdownReport } from '../src/report.js';
 
-const help = `PromptGuard — catch prompt regressions before they ship.
+const help = `EvalDiff — evaluate outputs, compare baselines, catch regressions.
 
 Usage:
-  promptguard run --cases cases.jsonl --adapter app.mjs --out run.json
-  promptguard run --cases cases.jsonl --prompt prompt.txt --out run.json
-  promptguard run ... --baseline baseline.json --report comparison.json --markdown report.md
-  promptguard compare --baseline baseline.json --current run.json --report comparison.json
+  evaldiff run --cases cases.jsonl --adapter app.mjs --out run.json
+  evaldiff run --cases cases.jsonl --prompt prompt.txt --out run.json
+  evaldiff run ... --baseline baseline.json --report comparison.json --markdown report.md
+  evaldiff compare --baseline baseline.json --current run.json --report comparison.json
 
 Options:
   --adapter PATH    JS module exporting default async (input, { id, signal }) => output
@@ -87,4 +87,4 @@ async function main() {
     process.exitCode = comparison.regression ? 1 : 0;
   } else process.exitCode = current.passed === current.total ? 0 : 1;
 }
-main().catch(error => { console.error(`PromptGuard: ${error.message}`); process.exitCode = 2; });
+main().catch(error => { console.error(`EvalDiff: ${error.message}`); process.exitCode = 2; });

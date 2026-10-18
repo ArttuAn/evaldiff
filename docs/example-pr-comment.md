@@ -1,5 +1,5 @@
-<!-- promptguard:report -->
-## 🔴 PromptGuard regression report
+<!-- evaldiff:report -->
+## 🔴 EvalDiff evaluation report
 
 **Pass rate 100% → 70%, 3 new failures**
 
