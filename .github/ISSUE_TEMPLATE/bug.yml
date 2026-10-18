@@ -1,0 +1,17 @@
+name: Bug report
+description: Report a reproducible harness or reporting issue.
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include a fictional test case, command, and expected/actual behavior. Never paste secrets or sensitive outputs.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Node version and operating system
+    validations:
+      required: true

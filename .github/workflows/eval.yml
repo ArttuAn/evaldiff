@@ -1,0 +1,36 @@
+name: Prompt evaluation
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Evaluate against saved baseline
+        run: npm run demo
+      - name: Save evaluation artifacts even on regression
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptguard-report
+          path: .promptguard/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f .promptguard/report.md ]; then
+            cat .promptguard/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi

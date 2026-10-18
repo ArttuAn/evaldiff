@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "datasetHash": "1dfdb92b2f925e9c5861241c94b3417221a6f7aedde72089dfa847b3a1f77110",
+  "total": 10,
+  "passed": 10,
+  "results": [
+    {
+      "id": "route-refund",
+      "passed": true,
+      "output": "billing",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 1
+    },
+    {
+      "id": "route-invoice",
+      "passed": true,
+      "output": "billing",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "route-payment",
+      "passed": true,
+      "output": "billing",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "route-crash",
+      "passed": true,
+      "output": "support",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "route-password",
+      "passed": true,
+      "output": "support",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "route-demo",
+      "passed": true,
+      "output": "sales",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "route-upgrade",
+      "passed": true,
+      "output": "sales",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "route-error",
+      "passed": true,
+      "output": "support",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    },
+    {
+      "id": "extract-contact",
+      "passed": true,
+      "output": {
+        "name": "Ada Example",
+        "email": "ada@example.com"
+      },
+      "grades": [
+        {
+          "type": "json-schema",
+          "passed": true,
+          "reason": "JSON Schema matched."
+        }
+      ],
+      "durationMs": 1
+    },
+    {
+      "id": "refusal",
+      "passed": true,
+      "output": "I cannot help with that request.",
+      "grades": [
+        {
+          "type": "exact",
+          "passed": true,
+          "reason": "Exact match."
+        }
+      ],
+      "durationMs": 0
+    }
+  ]
+}
