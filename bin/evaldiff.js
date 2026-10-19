@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadCases, runCases, compareRuns } from '../src/harness.js';
 import { headline, markdownReport } from '../src/report.js';
+import { summarizeRun } from '../src/analysis.js';
+import { htmlReport } from '../src/html.js';
 
 const help = `EvalDiff — evaluate outputs, compare baselines, catch regressions.
 
@@ -22,6 +24,8 @@ Options:
   --out PATH        Save full run artifact (includes inputs' resulting outputs)
   --report PATH     Save structured comparison (requires baseline)
   --markdown PATH   Save PR-ready Markdown (requires baseline)
+  --html PATH       Save a standalone HTML evaluation dashboard
+  --summary PATH    Save aggregate JSON metrics (slices, graders, latency)
   --help            Show usage
 
 Exit codes: 0 = pass/no new failures; 1 = failing cases/new regressions; 2 = configuration/artifact error.
@@ -34,7 +38,7 @@ async function save(path, data) {
 const json = path => readFile(path, 'utf8').then(JSON.parse);
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    cases: { type: 'string' }, adapter: { type: 'string' }, prompt: { type: 'string' }, model: { type: 'string' }, timeout: { type: 'string' }, out: { type: 'string' }, baseline: { type: 'string' }, current: { type: 'string' }, report: { type: 'string' }, markdown: { type: 'string' }, help: { type: 'boolean', short: 'h' }
+    cases: { type: 'string' }, adapter: { type: 'string' }, prompt: { type: 'string' }, model: { type: 'string' }, timeout: { type: 'string' }, out: { type: 'string' }, baseline: { type: 'string' }, current: { type: 'string' }, report: { type: 'string' }, markdown: { type: 'string' }, html: { type: 'string' }, summary: { type: 'string' }, help: { type: 'boolean', short: 'h' }
   } });
   if (values.help || !positionals.length) { console.log(help); return; }
   if (positionals.length !== 1 || !['run', 'compare'].includes(positionals[0])) throw new Error('Use run or compare. See --help.');
@@ -79,12 +83,17 @@ async function main() {
     if (!values.current || !values.baseline) throw new Error('compare requires --baseline and --current.');
     current = await json(values.current);
   }
+  let comparison;
   if (values.baseline) {
-    const comparison = compareRuns(await json(values.baseline), current);
+    comparison = compareRuns(await json(values.baseline), current);
     console.log(headline(comparison));
     if (values.report) await save(values.report, JSON.stringify(comparison, null, 2) + '\n');
     if (values.markdown) await save(values.markdown, markdownReport(comparison));
     process.exitCode = comparison.regression ? 1 : 0;
   } else process.exitCode = current.passed === current.total ? 0 : 1;
+  const summary = summarizeRun(current);
+  console.log(`Latency: p50 ${summary.latency.p50Ms ?? 'n/a'} ms · p95 ${summary.latency.p95Ms ?? 'n/a'} ms · adapter errors ${summary.errors}`);
+  if (values.summary) await save(values.summary, JSON.stringify(summary, null, 2) + '\n');
+  if (values.html) await save(values.html, htmlReport(current, comparison));
 }
 main().catch(error => { console.error(`EvalDiff: ${error.message}`); process.exitCode = 2; });

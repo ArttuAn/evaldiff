@@ -24,6 +24,7 @@ export async function loadCases(path) {
     if (!item || typeof item.id !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(item.id)) throw new Error(`Line ${index + 1}: id must be 1–100 letters, digits, dots, underscores, or hyphens.`);
     if (ids.has(item.id)) throw new Error(`Duplicate case id: ${item.id}`);
     if (!Object.hasOwn(item, 'input')) throw new Error(`Case ${item.id}: input is required.`);
+    if (item.tags !== undefined && (!Array.isArray(item.tags) || item.tags.length > 20 || new Set(item.tags).size !== item.tags.length || item.tags.some(tag => typeof tag !== 'string' || !/^[a-zA-Z0-9._-]{1,64}$/.test(tag)))) throw new Error(`Case ${item.id}: tags must be unique identifiers (maximum 20).`);
     if (!Array.isArray(item.graders) || !item.graders.length) throw new Error(`Case ${item.id}: graders are required.`);
     for (const grader of item.graders) {
       if (!grader || !['exact', 'json-schema'].includes(grader.type)) throw new Error(`Case ${item.id}: unknown grader.`);
@@ -70,9 +71,9 @@ export async function runCases(cases, adapter, { timeoutMs = 30000 } = {}) {
       // Ensure outputs are serializable before creating an artifact.
       JSON.stringify(output);
       const grades = item.graders.map(grader => grade(output, grader));
-      results.push({ id: item.id, passed: grades.every(g => g.passed), output, grades, durationMs: Math.round(performance.now() - started) });
+      results.push({ id: item.id, tags: item.tags || [], passed: grades.every(g => g.passed), output, grades, durationMs: Math.round(performance.now() - started) });
     } catch (error) {
-      results.push({ id: item.id, passed: false, error: error instanceof Error ? error.message : 'Adapter failed.', grades: [], durationMs: Math.round(performance.now() - started) });
+      results.push({ id: item.id, tags: item.tags || [], passed: false, error: error instanceof Error ? error.message : 'Adapter failed.', grades: item.graders.map(g => ({ type: g.type, passed: false, reason: 'Not evaluated: adapter failed or timed out.' })), durationMs: Math.round(performance.now() - started) });
     } finally { clearTimeout(timer); }
   }
   return {
@@ -89,6 +90,7 @@ export function validateRun(run) {
   const ids = new Set();
   for (const result of run.results) {
     if (!result || typeof result.id !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(result.id) || ids.has(result.id) || typeof result.passed !== 'boolean') throw new Error('Invalid run results.');
+    if (result.tags !== undefined && (!Array.isArray(result.tags) || result.tags.length > 20 || new Set(result.tags).size !== result.tags.length || result.tags.some(tag => typeof tag !== 'string' || !/^[a-zA-Z0-9._-]{1,64}$/.test(tag)))) throw new Error('Invalid result tags.');
     ids.add(result.id);
   }
   if (run.passed !== run.results.filter(r => r.passed).length) throw new Error('Invalid run pass count.');
@@ -102,6 +104,15 @@ export function compareRuns(baseline, current) {
   if (baseline.total !== current.total || current.results.some(r => !previous.has(r.id))) throw new Error('Case IDs differ between runs.');
   const newFailures = current.results.filter(r => previous.get(r.id) && !r.passed).map(r => r.id).sort();
   const fixed = current.results.filter(r => !previous.get(r.id) && r.passed).map(r => r.id).sort();
+  const baselineRows = new Map(baseline.results.map(r => [r.id, r]));
+  for (const row of current.results) {
+    if (!isDeepStrictEqual([...(row.tags || [])].sort(), [...(baselineRows.get(row.id).tags || [])].sort())) throw new Error('Result tags differ between runs. Regenerate the baseline.');
+  }
+  const tags = [...new Set(current.results.flatMap(r => r.tags || []))].sort();
+  const slices = tags.map(tag => {
+    const rows = current.results.filter(r => r.tags?.includes(tag));
+    return { tag, total: rows.length, baselinePassed: rows.filter(r => previous.get(r.id)).length, currentPassed: rows.filter(r => r.passed).length, newFailures: rows.filter(r => previous.get(r.id) && !r.passed).length };
+  });
   return {
     version: 1,
     total: current.total,
@@ -110,6 +121,7 @@ export function compareRuns(baseline, current) {
     newFailures,
     fixed,
     existingFailures: current.results.filter(r => !previous.get(r.id) && !r.passed).map(r => r.id).sort(),
-    regression: newFailures.length > 0
+    regression: newFailures.length > 0,
+    slices
   };
 }

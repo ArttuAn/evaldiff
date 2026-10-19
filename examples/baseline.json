@@ -1,11 +1,15 @@
 {
   "version": 1,
-  "datasetHash": "1dfdb92b2f925e9c5861241c94b3417221a6f7aedde72089dfa847b3a1f77110",
+  "datasetHash": "cbfc2213b0fe4b88b53efa3e7a3bc5ba3878d619348ae2b70e672c1eec0c80d8",
   "total": 10,
   "passed": 10,
   "results": [
     {
       "id": "route-refund",
+      "tags": [
+        "routing",
+        "billing"
+      ],
       "passed": true,
       "output": "billing",
       "grades": [
@@ -19,6 +23,10 @@
     },
     {
       "id": "route-invoice",
+      "tags": [
+        "routing",
+        "billing"
+      ],
       "passed": true,
       "output": "billing",
       "grades": [
@@ -32,6 +40,10 @@
     },
     {
       "id": "route-payment",
+      "tags": [
+        "routing",
+        "billing"
+      ],
       "passed": true,
       "output": "billing",
       "grades": [
@@ -45,6 +57,10 @@
     },
     {
       "id": "route-crash",
+      "tags": [
+        "routing",
+        "support"
+      ],
       "passed": true,
       "output": "support",
       "grades": [
@@ -58,6 +74,10 @@
     },
     {
       "id": "route-password",
+      "tags": [
+        "routing",
+        "support"
+      ],
       "passed": true,
       "output": "support",
       "grades": [
@@ -71,6 +91,10 @@
     },
     {
       "id": "route-demo",
+      "tags": [
+        "routing",
+        "sales"
+      ],
       "passed": true,
       "output": "sales",
       "grades": [
@@ -84,6 +108,10 @@
     },
     {
       "id": "route-upgrade",
+      "tags": [
+        "routing",
+        "sales"
+      ],
       "passed": true,
       "output": "sales",
       "grades": [
@@ -97,6 +125,10 @@
     },
     {
       "id": "route-error",
+      "tags": [
+        "routing",
+        "support"
+      ],
       "passed": true,
       "output": "support",
       "grades": [
@@ -110,6 +142,10 @@
     },
     {
       "id": "extract-contact",
+      "tags": [
+        "extraction",
+        "structured-output"
+      ],
       "passed": true,
       "output": {
         "name": "Ada Example",
@@ -122,10 +158,13 @@
           "reason": "JSON Schema matched."
         }
       ],
-      "durationMs": 1
+      "durationMs": 0
     },
     {
       "id": "refusal",
+      "tags": [
+        "refusal"
+      ],
       "passed": true,
       "output": "I cannot help with that request.",
       "grades": [

@@ -14,7 +14,7 @@
 
 **An eval result is useful. A case-by-case diff is actionable.** EvalDiff runs a versioned JSONL dataset through your AI app, grades its outputs, and compares the results with a saved baseline. See which cases regressed, which improved, and whether a change should pass CI.
 
-[Quick start](#-quick-start) · [Dataset & graders](#-datasets--graders) · [Adapters](#-evaluate-your-app) · [Baselines](#-baseline-comparisons) · [PR reports](#-evaluation-reports-in-pull-requests)
+[Quick start](#-quick-start) · [Dataset & graders](#-datasets--graders) · [Dashboard](#-inspect-your-evaluation) · [Adapters](#-evaluate-your-app) · [Baselines](#-baseline-comparisons) · [PR reports](#-evaluation-reports-in-pull-requests)
 
 ## ◎ An evaluation-first workflow
 
@@ -24,6 +24,8 @@
 | **Inference** | Run your JavaScript app or an OpenAI system prompt, one case at a time |
 | **Grading** | Apply exact-match and JSON Schema graders; all graders must pass |
 | **Results** | Save per-case outputs, grading reasons, errors, and durations |
+| **Analysis** | Inspect tagged slices, per-grader pass rates, adapter errors, and p50/p95 latency |
+| **Dashboard** | Export a standalone, offline HTML scorecard with expandable case evidence |
 | **Comparison** | Diff pass rates and identify newly failing, fixed, and existing failures |
 | **CI gate** | Fail on any new regression—even when fixes elsewhere hide the rate drop |
 | **PR report** | Update one bot comment with the evaluation scorecard and failing case IDs |
@@ -65,7 +67,9 @@ node bin/evaldiff.js run \
   --baseline examples/baseline.json \
   --out .evaldiff/current.json \
   --report .evaldiff/comparison.json \
-  --markdown .evaldiff/report.md
+  --markdown .evaldiff/report.md \
+  --html .evaldiff/report.html \
+  --summary .evaldiff/summary.json
 ```
 
 ```text
@@ -87,7 +91,7 @@ The graph reflects the included 10-case fixture, not a live model benchmark. Opt
 One JSON object per line. Blank lines are ignored. Each case needs a unique ID (1–100 letters, digits, dots, underscores, or hyphens), an input, and at least one grader.
 
 ```jsonl
-{"id":"greeting","input":"Say hello","graders":[{"type":"exact","expected":"Hello!"}]}
+{"id":"greeting","tags":["conversation","smoke"],"input":"Say hello","graders":[{"type":"exact","expected":"Hello!"}]}
 {"id":"contact","input":"Extract Ada's email","graders":[{"type":"json-schema","schema":{"type":"object","required":["email"],"additionalProperties":false,"properties":{"email":{"type":"string","format":"email"}}}}]}
 ```
 
@@ -96,7 +100,23 @@ One JSON object per line. Blank lines are ignored. Each case needs a unique ID (
 | `exact` | Strings match exactly, including whitespace and case. JSON values use deep structural equality; object key order does not matter. JSON encoded inside a string is still a string. |
 | `json-schema` | Validate an output value, or parse a text output as JSON first. Uses Ajv strict mode, **draft-07**, and `ajv-formats`. No coercion, code-fence stripping, or default insertion. Invalid/unsupported schemas are configuration errors. |
 
+Optional **`tags`** group cases into evaluation slices (for example, `routing`, `extraction`, or `hard`). Use up to 20 unique tags per case, each 1–64 letters, digits, dots, underscores, or hyphens. A case may belong to several slices; slice counts overlap but the global count does not. Tags are fingerprinted dataset content, so changing them requires an intentional baseline refresh.
+
 A case passes only when **all** its graders pass. Exceptions, invalid outputs, and timeouts become failed cases; remaining cases still run. Schema grading checks structure, not factual accuracy. For extraction tasks, add exact checks when you need to verify specific values as well as shape.
+
+## 📊 Inspect your evaluation
+
+![Actual EvalDiff HTML dashboard for the regressed fixture](docs/evaluation-dashboard.png)
+
+`npm run demo` now generates `.evaldiff/report.html` and `.evaldiff/summary.json` alongside the full run, comparison JSON, and Markdown. Open the HTML file directly in a browser—no server, scripts, external fonts, or tracking required. A [generated example](docs/evaluation-report.html) is included; download it to view locally.
+
+- **Slice performance:** find capability-specific regressions hidden by the overall average.
+- **Grader breakdown:** separate exact-match failures from structural/schema failures. Counts are grader applications, not cases; adapter errors count as failed applications with an explicit “not evaluated” reason.
+- **Latency:** nearest-rank p50/p95 over recorded per-case durations, including failures. Missing legacy timings are excluded. These are observed wall times, not a controlled benchmark or a latency regression gate.
+- **Case explorer:** expand any case to inspect its output, error, and grading evidence. Model output is HTML-escaped, never executed.
+- **Portable metrics:** `--summary` exports aggregate metrics without raw outputs. `--html` works with or without a baseline, including on failing runs. Both also work with `compare`.
+
+The example's timing values come from a deterministic local fixture and are usually near zero. Reports may contain sensitive outputs; review them before sharing.
 
 ## 🔌 Evaluate your app
 
@@ -196,14 +216,18 @@ Fork evaluations run without secrets. Commenting requires GitHub to associate th
 ## 🧪 Tests & layout
 
 ```bash
-npm test        # 10 tests: graders, datasets, timeouts, diffing, safe reports, CLI
+npm test        # 17 tests: graders, datasets, timeouts, slices, latency, safe exports, CLI
 npm run demo    # Deterministic evaluation used in CI
 ```
+
+CI tests Node.js **22 and 24** before running the evaluation gate. See [CHANGELOG.md](CHANGELOG.md) for release details.
 
 ```text
 bin/evaldiff.js              CLI + optional OpenAI adapter
 src/harness.js              Dataset loader, graders, runner, fingerprints, diffs
 src/report.js               Validated evaluation summaries and Markdown
+src/analysis.js             Slice/grader aggregation and latency percentiles
+src/html.js                 Offline dashboard with safely escaped case evidence
 scripts/comment-pr.mjs      Trusted PR report upsert
 examples/                   Dataset, working/broken apps, prompt, baseline
 test/                       Unit and CLI integration tests
