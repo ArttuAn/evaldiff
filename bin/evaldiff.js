@@ -11,16 +11,18 @@ import { htmlReport } from '../src/html.js';
 const help = `EvalDiff — evaluate outputs, compare baselines, catch regressions.
 
 Usage:
+  evaldiff validate --cases cases.jsonl
   evaldiff run --cases cases.jsonl --adapter app.mjs --out run.json
   evaldiff run --cases cases.jsonl --prompt prompt.txt --out run.json
   evaldiff run ... --baseline baseline.json --report comparison.json --markdown report.md
   evaldiff compare --baseline baseline.json --current run.json --report comparison.json
 
 Options:
-  --adapter PATH    JS module exporting default async (input, { id, signal }) => output
+  --adapter PATH    JS module exporting default async (input, { id, trial, signal }) => output
   --prompt PATH     System prompt for OpenAI (requires OPENAI_API_KEY)
   --model NAME      OpenAI model (default: OPENAI_MODEL or gpt-4.1-mini)
-  --timeout MS      Per-case timeout (default: 30000)
+  --timeout MS      Per-trial timeout (default: 30000)
+  --repeat N        Trials per case, 1–100 (default: 1; ALL trials must pass)
   --out PATH        Save full run artifact (includes inputs' resulting outputs)
   --report PATH     Save structured comparison (requires baseline)
   --markdown PATH   Save PR-ready Markdown (requires baseline)
@@ -38,21 +40,33 @@ async function save(path, data) {
 const json = path => readFile(path, 'utf8').then(JSON.parse);
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    cases: { type: 'string' }, adapter: { type: 'string' }, prompt: { type: 'string' }, model: { type: 'string' }, timeout: { type: 'string' }, out: { type: 'string' }, baseline: { type: 'string' }, current: { type: 'string' }, report: { type: 'string' }, markdown: { type: 'string' }, html: { type: 'string' }, summary: { type: 'string' }, help: { type: 'boolean', short: 'h' }
+    cases: { type: 'string' }, adapter: { type: 'string' }, prompt: { type: 'string' }, model: { type: 'string' }, timeout: { type: 'string' }, repeat: { type: 'string' }, out: { type: 'string' }, baseline: { type: 'string' }, current: { type: 'string' }, report: { type: 'string' }, markdown: { type: 'string' }, html: { type: 'string' }, summary: { type: 'string' }, help: { type: 'boolean', short: 'h' }
   } });
   if (values.help || !positionals.length) { console.log(help); return; }
-  if (positionals.length !== 1 || !['run', 'compare'].includes(positionals[0])) throw new Error('Use run or compare. See --help.');
+  if (positionals.length !== 1 || !['run', 'compare', 'validate'].includes(positionals[0])) throw new Error('Use run, compare, or validate. See --help.');
+  if (positionals[0] === 'validate') {
+    if (!values.cases || Object.keys(values).some(key => key !== 'cases')) throw new Error('validate accepts only --cases.');
+    const cases = await loadCases(values.cases);
+    const tags = [...new Set(cases.flatMap(c => c.tags || []))];
+    console.log(`Valid dataset: ${cases.length} cases · ${cases.reduce((n, c) => n + c.graders.length, 0)} graders · ${tags.length} tags. No inference performed.`);
+    return;
+  }
+  if (values.repeat !== undefined && positionals[0] !== 'run') throw new Error('--repeat is only valid with run; compare uses saved trial settings.');
   if ((values.report || values.markdown) && !values.baseline) throw new Error('--report and --markdown require --baseline.');
   let current;
   if (positionals[0] === 'run') {
     if (!values.cases || Number(Boolean(values.adapter)) + Number(Boolean(values.prompt)) !== 1) throw new Error('run requires --cases and exactly one of --adapter or --prompt.');
     const timeoutMs = Number(values.timeout ?? 30000);
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) throw new Error('--timeout must be an integer from 1 to 600000.');
+    const repeat = Number(values.repeat ?? 1);
+    if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100) throw new Error('--repeat must be an integer from 1 to 100.');
     const cases = await loadCases(values.cases);
+    if (cases.length * repeat > 100000) throw new Error('Evaluation exceeds 100000 total trials.');
     // Validate baseline compatibility before spending money on inference.
     if (values.baseline) {
       const { fingerprint, validateRun } = await import('../src/harness.js');
       const base = validateRun(await json(values.baseline));
+      if ((base.trialsPerCase ?? 1) !== repeat) throw new Error('Trial counts differ: use the same --repeat setting as the baseline.');
       if (base.datasetHash !== fingerprint([...cases].sort((a, b) => a.id.localeCompare(b.id)))) throw new Error('Dataset changed: regenerate the baseline explicitly before comparing.');
     }
     let adapter;
@@ -75,7 +89,7 @@ async function main() {
         return content;
       };
     }
-    current = await runCases(cases, adapter, { timeoutMs });
+    current = await runCases(cases, adapter, { timeoutMs, repeat });
     if (values.out) await save(values.out, JSON.stringify(current, null, 2) + '\n');
     console.log(`Passing: ${current.passed}/${current.total}`);
     for (const row of current.results.filter(r => !r.passed)) console.log(`  FAIL ${row.id}: ${row.error || row.grades.filter(g => !g.passed).map(g => g.reason).join('; ')}`);
@@ -93,6 +107,7 @@ async function main() {
   } else process.exitCode = current.passed === current.total ? 0 : 1;
   const summary = summarizeRun(current);
   console.log(`Latency: p50 ${summary.latency.p50Ms ?? 'n/a'} ms · p95 ${summary.latency.p95Ms ?? 'n/a'} ms · adapter errors ${summary.errors}`);
+  if (summary.stability.trialsPerCase > 1) console.log(`Stability: ${summary.stability.passedTrials}/${summary.stability.totalTrials} trials passed · ${summary.stability.flakyCases.length} flaky cases (all-trials-pass policy)`);
   if (values.summary) await save(values.summary, JSON.stringify(summary, null, 2) + '\n');
   if (values.html) await save(values.html, htmlReport(current, comparison));
 }

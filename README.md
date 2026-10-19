@@ -14,7 +14,7 @@
 
 **An eval result is useful. A case-by-case diff is actionable.** EvalDiff runs a versioned JSONL dataset through your AI app, grades its outputs, and compares the results with a saved baseline. See which cases regressed, which improved, and whether a change should pass CI.
 
-[Quick start](#-quick-start) · [Dataset & graders](#-datasets--graders) · [Dashboard](#-inspect-your-evaluation) · [Adapters](#-evaluate-your-app) · [Baselines](#-baseline-comparisons) · [PR reports](#-evaluation-reports-in-pull-requests)
+[Quick start](#-quick-start) · [Stability](#-catch-flaky-behavior) · [Dataset & graders](#-datasets--graders) · [Dashboard](#-inspect-your-evaluation) · [Adapters](#-evaluate-your-app) · [Baselines](#-baseline-comparisons) · [PR reports](#-evaluation-reports-in-pull-requests)
 
 ## ◎ An evaluation-first workflow
 
@@ -25,6 +25,7 @@
 | **Grading** | Apply exact-match and JSON Schema graders; all graders must pass |
 | **Results** | Save per-case outputs, grading reasons, errors, and durations |
 | **Analysis** | Inspect tagged slices, per-grader pass rates, adapter errors, and p50/p95 latency |
+| **Stability** | Repeat cases, retain every trial, and flag observed mixed-outcome behavior |
 | **Dashboard** | Export a standalone, offline HTML scorecard with expandable case evidence |
 | **Comparison** | Diff pass rates and identify newly failing, fixed, and existing failures |
 | **CI gate** | Fail on any new regression—even when fixes elsewhere hide the rate drop |
@@ -86,6 +87,42 @@ Pass rate 100% → 70%, 3 new failures
 
 The graph reflects the included 10-case fixture, not a live model benchmark. Optional: `npm link` exposes the local `evaldiff` command. This project is distributed through GitHub and is **not published to npm**.
 
+## 🔁 Catch flaky behavior
+
+A single passing run can hide inconsistent behavior. **`--repeat N`** runs every case N times, preserves every trial's output and grades, and reports cases with both passing and failing outcomes.
+
+```bash
+# A deterministic simulation: 30 trials, 27 passing, 3 flaky cases.
+# Exit 1 is intentional because three cases fail the all-trials-pass policy.
+npm run demo:stability
+```
+
+Open `.evaldiff/stability.html` to inspect each trial, or `.evaldiff/stability.json` for aggregate metrics.
+
+![Actual repeated-trial evaluation dashboard](docs/stability-dashboard.png)
+
+For your own app, create a baseline and current run with the **same trial count**:
+
+```bash
+node bin/evaldiff.js run --cases cases.jsonl --adapter my-app.mjs \
+  --repeat 5 --out baseline.json
+
+# After changing your app or prompt:
+node bin/evaldiff.js run --cases cases.jsonl --adapter my-app.mjs \
+  --repeat 5 --baseline baseline.json --out .evaldiff/current.json \
+  --summary .evaldiff/stability.json --html .evaldiff/stability.html
+```
+
+- **Case verdict:** every grader must pass in every trial. No retries that silently erase failures.
+- **Flaky:** at least one passing and one failing trial were observed. Always-failing cases are failures, not flaky.
+- **Evidence:** per-trial output, grading reasons, errors, and timings remain in the full run artifact and HTML explorer. Case-level evidence shows the first failed trial (or first passing trial if all pass).
+- **Comparable baselines:** different repetition counts are rejected before inference. Legacy runs without a trial count are treated as single-trial runs.
+- **Isolation:** inputs are cloned for each trial; returned JSON values are snapshotted. Adapter-global state and external systems are **not** reset; manage those in your adapter.
+- **Timing and grading:** aggregates count individual trials; slice and global case verdicts use the all-trials-pass policy. Case time is the sum of trial times.
+- **Bounds:** 1–100 trials per case, up to 100,000 total trials. Default is one. API calls and costs grow with the trial count.
+
+This is observed stability, **not a confidence interval, an independence assumption, or a guarantee of future reliability**. The demo deliberately alternates working and broken fixtures; it is not live model data. Baseline regression gates remain case-level: an already failing flaky case is reported, but not a new regression.
+
 ## ◇ Datasets & graders
 
 One JSON object per line. Blank lines are ignored. Each case needs a unique ID (1–100 letters, digits, dots, underscores, or hyphens), an input, and at least one grader.
@@ -100,6 +137,13 @@ One JSON object per line. Blank lines are ignored. Each case needs a unique ID (
 | `exact` | Strings match exactly, including whitespace and case. JSON values use deep structural equality; object key order does not matter. JSON encoded inside a string is still a string. |
 | `json-schema` | Validate an output value, or parse a text output as JSON first. Uses Ajv strict mode, **draft-07**, and `ajv-formats`. No coercion, code-fence stripping, or default insertion. Invalid/unsupported schemas are configuration errors. |
 
+Validate dataset syntax, IDs, tags, and schemas without importing an adapter or calling a model:
+
+```bash
+node bin/evaldiff.js validate --cases cases.jsonl
+# Or: npm run validate (for the included dataset)
+```
+
 Optional **`tags`** group cases into evaluation slices (for example, `routing`, `extraction`, or `hard`). Use up to 20 unique tags per case, each 1–64 letters, digits, dots, underscores, or hyphens. A case may belong to several slices; slice counts overlap but the global count does not. Tags are fingerprinted dataset content, so changing them requires an intentional baseline refresh.
 
 A case passes only when **all** its graders pass. Exceptions, invalid outputs, and timeouts become failed cases; remaining cases still run. Schema grading checks structure, not factual accuracy. For extraction tasks, add exact checks when you need to verify specific values as well as shape.
@@ -112,7 +156,7 @@ A case passes only when **all** its graders pass. Exceptions, invalid outputs, a
 
 - **Slice performance:** find capability-specific regressions hidden by the overall average.
 - **Grader breakdown:** separate exact-match failures from structural/schema failures. Counts are grader applications, not cases; adapter errors count as failed applications with an explicit “not evaluated” reason.
-- **Latency:** nearest-rank p50/p95 over recorded per-case durations, including failures. Missing legacy timings are excluded. These are observed wall times, not a controlled benchmark or a latency regression gate.
+- **Latency:** nearest-rank p50/p95 over recorded per-trial durations, including failures. Missing legacy timings are excluded. These are observed wall times, not a controlled benchmark or a latency regression gate.
 - **Case explorer:** expand any case to inspect its output, error, and grading evidence. Model output is HTML-escaped, never executed.
 - **Portable metrics:** `--summary` exports aggregate metrics without raw outputs. `--html` works with or without a baseline, including on failing runs. Both also work with `compare`.
 
@@ -124,7 +168,7 @@ The example's timing values come from a deterministic local fixture and are usua
 
 ```js
 // my-app.mjs
-export default async function evaluate(input, { id, signal }) {
+export default async function evaluate(input, { id, trial, signal }) {
   const response = await fetch('https://your-app.example/respond', {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json' },
@@ -141,7 +185,7 @@ node bin/evaldiff.js run \
   --timeout 30000 --out .evaldiff/run.json
 ```
 
-Adapters can wrap prompt chains, RAG apps, local models, or APIs. They execute code: run only trusted adapters.
+Adapters can wrap prompt chains, RAG apps, local models, or APIs. The context includes the case `id`, a one-based `trial` number, and an abort `signal`. Return a losslessly JSON-compatible value (no `undefined` fields, Dates, NaN, BigInt, or functions). They execute code: run only trusted adapters.
 
 ### OpenAI prompt adapter
 
@@ -216,7 +260,7 @@ Fork evaluations run without secrets. Commenting requires GitHub to associate th
 ## 🧪 Tests & layout
 
 ```bash
-npm test        # 17 tests: graders, datasets, timeouts, slices, latency, safe exports, CLI
+npm test        # 26 tests: graders, trials, isolation, datasets, analysis, exports, CLI
 npm run demo    # Deterministic evaluation used in CI
 ```
 
@@ -240,7 +284,7 @@ docs/                       Original graphics and generated report
 - This is a regression evaluation tool, **not a sandbox or safety certification**. Adapters and schemas must be trusted.
 - Timeouts cancel cooperative I/O; they cannot interrupt CPU-bound adapters or work that ignores abort signals.
 - Artifacts/logs can contain outputs, grading reasons, and adapter exception text. Avoid sensitive datasets and secret-bearing errors; review artifact retention.
-- No semantic judge, repeated-trial statistics, retries, parallelism, or automatic factual verification. Exact matching is intentionally strict and may be unsuitable for free-form text.
+- No semantic judge, statistical confidence intervals, automatic retries, parallelism, or factual verification. Exact matching is intentionally strict and may be unsuitable for free-form text.
 - A PR can change datasets, baselines, or workflows. Reports are not attestations; review those changes. Never run PR code in a write-enabled `pull_request_target` or reporting job.
 
 ## 🏷 Project signals
@@ -249,7 +293,7 @@ docs/                       Original graphics and generated report
 
 **Labels:** `area:graders` · `area:ci` · `area:cli` · `area:docs` · `type:bug` · `type:feature` · `good first issue`
 
-Potential next steps—not shipped features: repeated trials, custom grader plugins, trend history, and parallel execution.
+Potential next steps—not shipped features: custom grader plugins, statistical confidence intervals, trend history, and parallel execution.
 
 ---
 <p align="center"><img src="docs/logo.svg" width="26" alt=""><br><strong>Evaluate behavior. Review the diff.</strong><br><sub>MIT licensed · Small, inspectable, evaluation-first.</sub></p>

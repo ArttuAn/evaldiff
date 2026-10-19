@@ -56,28 +56,43 @@ export function grade(output, grader) {
   return { type: grader.type, passed, reason: passed ? 'JSON Schema matched.' : ajv.errorsText(validate.errors, { separator: '; ' }) };
 }
 
-export async function runCases(cases, adapter, { timeoutMs = 30000 } = {}) {
+async function runTrial(item, adapter, timeoutMs, trial) {
+  const controller = new AbortController();
+  let timer;
+  const started = performance.now();
+  try {
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => { controller.abort(); reject(new Error(`Timed out after ${timeoutMs}ms.`)); }, timeoutMs);
+    });
+    const output = await Promise.race([Promise.resolve().then(() => adapter(structuredClone(item.input), { id: item.id, trial, signal: controller.signal })), timeout]);
+    // Reject lossy serialization (undefined fields, NaN, functions, Dates, etc.).
+    const serialized = JSON.stringify(output);
+    if (serialized === undefined || !isDeepStrictEqual(JSON.parse(serialized), output)) throw new Error('Adapter must return a losslessly JSON-compatible value.');
+    const grades = item.graders.map(grader => grade(output, grader));
+    return { passed: grades.every(g => g.passed), output: JSON.parse(serialized), grades, durationMs: Math.round(performance.now() - started) };
+  } catch (error) {
+    return { passed: false, error: error instanceof Error ? error.message : 'Adapter failed.', grades: item.graders.map(g => ({ type: g.type, passed: false, reason: 'Not evaluated: adapter failed or timed out.' })), durationMs: Math.round(performance.now() - started) };
+  } finally { clearTimeout(timer); }
+}
+
+export async function runCases(cases, adapter, { timeoutMs = 30000, repeat = 1 } = {}) {
+  if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100) throw new Error('repeat must be an integer from 1 to 100.');
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600000) throw new Error('timeoutMs must be an integer from 1 to 600000.');
+  if (!cases.length || cases.length * repeat > 100000) throw new Error('Evaluation must contain 1–100000 total trials.');
   const results = [];
   for (const item of cases) {
-    const controller = new AbortController();
-    let timer;
-    const started = performance.now();
-    try {
-      const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => { controller.abort(); reject(new Error(`Timed out after ${timeoutMs}ms.`)); }, timeoutMs);
-      });
-      const output = await Promise.race([Promise.resolve().then(() => adapter(item.input, { id: item.id, signal: controller.signal })), timeout]);
-      if (output === undefined || !['string', 'number', 'boolean', 'object'].includes(typeof output) || (typeof output === 'number' && !Number.isFinite(output))) throw new Error('Adapter must return a JSON-compatible value.');
-      // Ensure outputs are serializable before creating an artifact.
-      JSON.stringify(output);
-      const grades = item.graders.map(grader => grade(output, grader));
-      results.push({ id: item.id, tags: item.tags || [], passed: grades.every(g => g.passed), output, grades, durationMs: Math.round(performance.now() - started) });
-    } catch (error) {
-      results.push({ id: item.id, tags: item.tags || [], passed: false, error: error instanceof Error ? error.message : 'Adapter failed.', grades: item.graders.map(g => ({ type: g.type, passed: false, reason: 'Not evaluated: adapter failed or timed out.' })), durationMs: Math.round(performance.now() - started) });
-    } finally { clearTimeout(timer); }
+    const trials = [];
+    for (let trial = 1; trial <= repeat; trial++) trials.push(await runTrial(item, adapter, timeoutMs, trial));
+    const representative = trials.find(t => !t.passed) || trials[0];
+    results.push({ id: item.id, tags: item.tags || [], ...representative,
+      passed: trials.every(t => t.passed),
+      durationMs: trials.reduce((sum, t) => sum + t.durationMs, 0),
+      ...(repeat > 1 ? { trials } : {})
+    });
   }
   return {
     version: 1,
+    trialsPerCase: repeat,
     datasetHash: fingerprint([...cases].sort((a, b) => a.id.localeCompare(b.id))),
     total: results.length,
     passed: results.filter(r => r.passed).length,
@@ -87,10 +102,15 @@ export async function runCases(cases, adapter, { timeoutMs = 30000 } = {}) {
 
 export function validateRun(run) {
   if (!run || run.version !== 1 || !/^[a-f0-9]{64}$/.test(run.datasetHash) || !Number.isInteger(run.total) || run.total < 1 || !Array.isArray(run.results) || run.results.length !== run.total) throw new Error('Invalid run artifact.');
+  const repeat = run.trialsPerCase ?? 1;
+  if (!Number.isInteger(repeat) || repeat < 1 || repeat > 100 || run.total * repeat > 100000) throw new Error('Invalid trial configuration.');
   const ids = new Set();
   for (const result of run.results) {
     if (!result || typeof result.id !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(result.id) || ids.has(result.id) || typeof result.passed !== 'boolean') throw new Error('Invalid run results.');
     if (result.tags !== undefined && (!Array.isArray(result.tags) || result.tags.length > 20 || new Set(result.tags).size !== result.tags.length || result.tags.some(tag => typeof tag !== 'string' || !/^[a-zA-Z0-9._-]{1,64}$/.test(tag)))) throw new Error('Invalid result tags.');
+    if (repeat > 1 || result.trials !== undefined) {
+      if (!Array.isArray(result.trials) || result.trials.length !== repeat || result.trials.some(t => !t || typeof t.passed !== 'boolean' || !Number.isFinite(t.durationMs) || t.durationMs < 0 || !Array.isArray(t.grades) || !t.grades.length || t.grades.some(g => !g || typeof g.passed !== 'boolean') || t.passed !== t.grades.every(g => g.passed) || (t.error !== undefined && (typeof t.error !== 'string' || t.passed))) || result.passed !== result.trials.every(t => t.passed)) throw new Error('Invalid or inconsistent trial results.');
+    }
     ids.add(result.id);
   }
   if (run.passed !== run.results.filter(r => r.passed).length) throw new Error('Invalid run pass count.');
@@ -99,6 +119,7 @@ export function validateRun(run) {
 
 export function compareRuns(baseline, current) {
   validateRun(baseline); validateRun(current);
+  if ((baseline.trialsPerCase ?? 1) !== (current.trialsPerCase ?? 1)) throw new Error('Trial counts differ: compare evaluations with the same repeat setting.');
   if (baseline.datasetHash !== current.datasetHash) throw new Error('Dataset changed: use the same inputs and graders, then explicitly regenerate the baseline.');
   const previous = new Map(baseline.results.map(r => [r.id, r.passed]));
   if (baseline.total !== current.total || current.results.some(r => !previous.has(r.id))) throw new Error('Case IDs differ between runs.');
@@ -116,6 +137,7 @@ export function compareRuns(baseline, current) {
   return {
     version: 1,
     total: current.total,
+    trialsPerCase: current.trialsPerCase ?? 1,
     baselinePassed: baseline.passed,
     currentPassed: current.passed,
     newFailures,

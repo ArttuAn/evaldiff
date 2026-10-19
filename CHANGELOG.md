@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+### Stability evaluations
+- `--repeat N` runs 1–100 trials per case with conservative all-trials-pass verdicts.
+- Retain every trial's output, grade, error, and duration; detect observed mixed-outcome (flaky) cases.
+- Repeated baselines must use the same trial count; incompatible comparisons fail before inference.
+- HTML trial explorer, stability metrics, PR policy notes, and a deterministic stability demo.
+- Clone inputs and snapshot JSON outputs to prevent cross-trial data contamination; reject lossy JSON values.
+
+### Validation and reliability
+- `validate --cases` checks datasets and schemas without importing adapters or calling providers.
+- 26 automated tests, including repetition, baseline compatibility, input isolation, output snapshots, and per-trial HTML escaping.
+- CI validates the example dataset and cancels superseded evaluations for the same branch/PR.
+
 ## 0.2.0
 
 ### Evaluation analysis

@@ -2,10 +2,11 @@ import { validateRun } from './harness.js';
 
 export function summarizeRun(run) {
   validateRun(run);
-  const durations = run.results.map(r => r.durationMs).filter(n => Number.isFinite(n) && n >= 0).sort((a, b) => a - b);
+  const attempts = run.results.flatMap(r => r.trials || [r]);
+  const durations = attempts.map(r => r.durationMs).filter(n => Number.isFinite(n) && n >= 0).sort((a, b) => a - b);
   const percentile = p => durations.length ? durations[Math.max(0, Math.ceil(p * durations.length) - 1)] : null;
   const groups = new Map();
-  for (const row of run.results) {
+  for (const row of attempts) {
     for (const grade of row.grades || []) {
       if (!grade || typeof grade.type !== 'string' || typeof grade.passed !== 'boolean') continue;
       const group = groups.get(grade.type) || { type: grade.type, total: 0, passed: 0 };
@@ -17,7 +18,13 @@ export function summarizeRun(run) {
     total: run.total,
     passed: run.passed,
     passRate: run.passed / run.total,
-    errors: run.results.filter(r => typeof r.error === 'string').length,
+    errors: attempts.filter(r => typeof r.error === 'string').length,
+    stability: {
+      trialsPerCase: run.trialsPerCase ?? 1,
+      totalTrials: attempts.length,
+      passedTrials: attempts.filter(t => t.passed).length,
+      flakyCases: run.results.filter(r => r.trials?.some(t => t.passed) && r.trials.some(t => !t.passed)).map(r => r.id).sort()
+    },
     latency: { samples: durations.length, p50Ms: percentile(.5), p95Ms: percentile(.95), totalMs: durations.reduce((sum, n) => sum + n, 0) },
     graders: [...groups.values()].sort((a, b) => a.type.localeCompare(b.type)),
     slices: tags.map(tag => {

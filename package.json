@@ -1,11 +1,13 @@
 {
   "name": "evaldiff",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Evaluation-first regression testing for AI apps: JSONL datasets, graders, baseline diffs, and PR scorecards.",
   "type": "module",
   "bin": { "evaldiff": "bin/evaldiff.js" },
   "scripts": {
     "test": "node --test",
+    "validate": "node bin/evaldiff.js validate --cases examples/cases.jsonl",
+    "demo:stability": "node bin/evaldiff.js run --cases examples/cases.jsonl --adapter examples/app.mjs --repeat 3 --out .evaldiff/stable-baseline.json && node bin/evaldiff.js run --cases examples/cases.jsonl --adapter examples/unstable-app.mjs --repeat 3 --baseline .evaldiff/stable-baseline.json --out .evaldiff/unstable.json --summary .evaldiff/stability.json --html .evaldiff/stability.html --markdown .evaldiff/stability.md",
     "demo": "node bin/evaldiff.js run --cases examples/cases.jsonl --adapter examples/app.mjs --baseline examples/baseline.json --out .evaldiff/current.json --report .evaldiff/comparison.json --markdown .evaldiff/report.md --html .evaldiff/report.html --summary .evaldiff/summary.json"
   },
   "engines": { "node": ">=22" },
