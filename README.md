@@ -75,9 +75,9 @@ node bin/evaldiff.js run \
 
 ```text
 Passing: 7/10
-  FAIL route-refund: Output did not exactly match the expected value.
-  FAIL extract-contact: data must have required property 'email'
-  FAIL refusal: Output did not exactly match the expected value.
+  FAIL route-refund: "Output did not exactly match the expected value."
+  FAIL extract-contact: "data must have required property 'email'"
+  FAIL refusal: "Output did not exactly match the expected value."
 Pass rate 100% → 70%, 3 new failures
 ```
 
@@ -86,6 +86,28 @@ Pass rate 100% → 70%, 3 new failures
 ![Real example evaluation: baseline 100%, current 70%](docs/regression-chart.svg)
 
 The graph reflects the included 10-case fixture, not a live model benchmark. Optional: `npm link` exposes the local `evaldiff` command. This project is distributed through GitHub and is **not published to npm**.
+
+## 🔎 Triage regressions without rerunning everything
+
+Inspect changed verdicts and failed-trial reasons from saved artifacts, with no inference:
+
+```bash
+node bin/evaldiff.js compare \
+  --baseline baseline.json --current .evaldiff/current.json --details
+```
+
+After fixing your app, rerun only the cases that failed:
+
+```bash
+node bin/evaldiff.js run \
+  --cases cases.jsonl --adapter my-app.mjs \
+  --failed-from .evaldiff/current.json \
+  --out .evaldiff/rerun.json --html .evaldiff/rerun.html
+```
+
+The original full-dataset artifact must match the supplied dataset (including IDs, inputs, graders, and tags). The source trial count is inherited automatically; conflicting `--repeat` values are rejected. This catches stale rerun requests before importing the adapter or spending money on inference.
+
+**Reruns are separate subset evaluations**, not replacements for full-dataset CI. They have their own dataset fingerprint and cannot be combined with `--baseline` in the same invocation. If nothing failed, the command exits `2` without inference or writing a new artifact. Run the full suite again before merging. HTML case rows now label new regressions, fixes, existing failures, and unchanged passes.
 
 ## 🔁 Catch flaky behavior
 
@@ -231,7 +253,7 @@ node bin/evaldiff.js compare \
 - **Existing failure:** fails in both runs; visible but not a new regression.
 - **Pass rate:** passing cases / total cases. The diff uses **percentage points**.
 - **Dataset integrity:** fingerprinted inputs, graders, IDs, and metadata must match. Row order and object key order do not matter. A changed dataset requires an explicitly regenerated baseline. Compatibility is checked before inference when using `run --baseline`.
-- **Baseline updates:** intentional, reviewed file changes—not automatic acceptance of a failing run.
+- **Baseline updates:** intentional, reviewed file changes—not automatic acceptance of a failing run. The CLI rejects artifact paths that overwrite inputs or collide with another output (including existing symlink aliases), and snapshots the baseline before inference.
 
 | Exit | Meaning |
 |:--:|:--|
@@ -260,7 +282,7 @@ Fork evaluations run without secrets. Commenting requires GitHub to associate th
 ## 🧪 Tests & layout
 
 ```bash
-npm test        # 26 tests: graders, trials, isolation, datasets, analysis, exports, CLI
+npm test        # 33 tests: graders, trials, triage, isolation, analysis, exports, CLI
 npm run demo    # Deterministic evaluation used in CI
 ```
 
@@ -271,6 +293,7 @@ bin/evaldiff.js              CLI + optional OpenAI adapter
 src/harness.js              Dataset loader, graders, runner, fingerprints, diffs
 src/report.js               Validated evaluation summaries and Markdown
 src/analysis.js             Slice/grader aggregation and latency percentiles
+src/triage.js               Dataset-checked failure selection and case-level diffs
 src/html.js                 Offline dashboard with safely escaped case evidence
 scripts/comment-pr.mjs      Trusted PR report upsert
 examples/                   Dataset, working/broken apps, prompt, baseline

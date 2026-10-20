@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1
+
+- `--failed-from` reruns only failed cases from a matching full-dataset evaluation, inheriting its trial count.
+- Reject stale datasets, conflicting repetitions, empty failure selections, and full-baseline/subset mixing before inference.
+- `compare --details` prints changed case verdicts and failed-trial reasons without model calls.
+- HTML case rows distinguish new regressions, fixes, existing failures, and unchanged passes.
+- Diagnostic reasons are JSON-quoted in the terminal to escape control characters.
+- Prevent artifacts from overwriting input files or sharing output paths, including existing symlink aliases; compare against the baseline snapshot loaded before inference.
+- 33 tests, including rerun selection, dataset integrity, inherited repetition, detailed comparisons, safe diagnostics, and overwrite prevention.
+
 ## 0.3.0
 
 ### Stability evaluations
